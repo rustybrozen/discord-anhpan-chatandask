@@ -1,0 +1,368 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChatGoogle } from '@langchain/google';
+import { HumanMessage } from '@langchain/core/messages';
+import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
+import { Chroma } from '@langchain/community/vectorstores/chroma';
+import { Document } from '@langchain/core/documents';
+import type { Where } from 'chromadb';
+import { AiPrompts } from './ai.prompts';
+import { RedisService } from './redis.service';
+
+@Injectable()
+export class AiService {
+  private model: ChatGoogle;
+  private summaryModel: ChatGoogle;
+  private profileStore: Chroma;
+  private historyStore: Chroma;
+  private embeddings: GoogleGenerativeAIEmbeddings;
+  private serverInfoStore: Chroma;
+
+  constructor(
+    private configService: ConfigService,
+    private redisService: RedisService,
+  ) {
+    const apiKey = this.configService.get<string>('GOOGLE_API_KEY');
+    const chromaUrl = this.configService.get<string>('CHROMA_URL') || '';
+
+    this.model = new ChatGoogle({
+      apiKey: apiKey,
+      model: this.configService.get<string>('GOOGLE_MODEL') || '',
+      temperature: 0.3,
+    });
+
+    this.summaryModel = new ChatGoogle({
+      apiKey: apiKey,
+      model: this.configService.get<string>('SUMMARY_GOOGLE_MODEL') || '',
+      temperature: 0.3,
+    });
+    this.embeddings = new GoogleGenerativeAIEmbeddings({
+      apiKey: apiKey,
+      model: this.configService.get<string>('EMBEDDING_MODEL') || '',
+    });
+
+    this.profileStore = new Chroma(this.embeddings, {
+      collectionName: 'profile',
+      url: chromaUrl,
+    });
+
+    this.serverInfoStore = new Chroma(this.embeddings, {
+      collectionName: 'server-info',
+      url: chromaUrl,
+    });
+    this.historyStore = new Chroma(this.embeddings, {
+      collectionName: 'history',
+      url: chromaUrl,
+    });
+  }
+
+  async cleanAndSummarize(rawText: string): Promise<string> {
+    const prompt = AiPrompts.cleanAndSummarize(rawText);
+
+    const res = await this.model.invoke([new HumanMessage(prompt)]);
+    const content = res.content;
+
+    const result =
+      typeof content === 'string'
+        ? content
+        : content
+            .map((c) => {
+              if (typeof c === 'string') return c;
+              if ('text' in c && typeof c.text === 'string') return c.text;
+              return '';
+            })
+            .join('\n');
+
+    return result.trim();
+  }
+
+  async refreshServerMemory(guildId: string, cleanText: string) {
+    console.log(`🔄 Refreshing Guild Data: ${guildId}`);
+    try {
+      await this.serverInfoStore.delete({ filter: { guildId: guildId } });
+    } catch (e) {
+      console.log('error: ', e);
+    }
+
+    await this.serverInfoStore.addDocuments([
+      new Document({
+        pageContent: cleanText,
+        metadata: {
+          guildId: guildId,
+          type: 'server_knowledge_base',
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    ]);
+    return '✅ Database Updated!';
+  }
+
+  private async syncUserProfile(
+    userId: string,
+    liveDiscordProfile: string,
+  ): Promise<string> {
+    const existingDocs = await this.profileStore.similaritySearch('lookup', 1, {
+      userId: userId,
+    });
+
+    if (existingDocs.length === 0) {
+      console.log(`🆕 New User Profile: ${userId}`);
+      await this.saveProfileToDb(userId, liveDiscordProfile);
+      return liveDiscordProfile;
+    }
+
+    const storedProfile = existingDocs[0].pageContent;
+
+    if (storedProfile !== liveDiscordProfile) {
+      console.log(`🔄 Profile Changed! Updating DB for ${userId}...`);
+      try {
+        await this.profileStore.delete({ filter: { userId: userId } });
+      } catch (e) {
+        console.log('error: ', e);
+      }
+      await this.saveProfileToDb(userId, liveDiscordProfile);
+      return liveDiscordProfile;
+    }
+
+    return storedProfile;
+  }
+
+  private async saveProfileToDb(userId: string, content: string) {
+    await this.profileStore.addDocuments([
+      new Document({
+        pageContent: content,
+        metadata: {
+          userId: userId,
+          type: 'user_profile',
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    ]);
+  }
+
+  private async optimizeQuery(query: string): Promise<string> {
+    const prompt = `Rewrite for Vector Search. Keywords ONLY. Query: "${query}"`;
+
+    const res = await this.summaryModel.invoke([new HumanMessage(prompt)]);
+    const content = res.content;
+
+    const optimized =
+      typeof content === 'string'
+        ? content
+        : content
+            .map((c) => {
+              if (typeof c === 'string') return c;
+              if ('text' in c && typeof c.text === 'string') return c.text;
+              return '';
+            })
+            .join('');
+
+    return optimized.trim() || query;
+  }
+
+  async chatAI(
+    userId: string,
+    liveProfile: string,
+    userMessage: string,
+  ): Promise<{ react: string; content: string }> {
+    const userProfile = await this.syncUserProfile(userId, liveProfile);
+    const searchParam = await this.optimizeQuery(userMessage);
+    const currentPersona = await this.getPersona(userId);
+    const personaContext = currentPersona
+      ? currentPersona
+      : 'Mặc định (Thân thiện)';
+
+    const shortTermHistory = await this.redisService.getRecentHistory(userId);
+    const serverDocs = await this.serverInfoStore.similaritySearch(
+      searchParam || 'info',
+      3,
+    );
+    const serverContext = serverDocs
+      .map((doc) => doc.pageContent)
+      .join('\n---\n');
+
+    const historyDocs = await this.historyStore.similaritySearch(
+      userMessage,
+      5,
+      { userId: userId },
+    );
+    const historyContext = historyDocs.map((d) => d.pageContent).join('\n');
+
+    const finalPrompt = AiPrompts.mainChat({
+      userProfile,
+      personaContext,
+      shortTermHistory,
+      historyContext,
+      serverContext,
+      userMessage,
+    });
+
+    const aiMsg = await this.model.invoke([new HumanMessage(finalPrompt)]);
+
+    const rawContent =
+      typeof aiMsg.content === 'string'
+        ? aiMsg.content
+        : aiMsg.content
+            .map((c) => {
+              if (typeof c === 'string') return c;
+              if ('text' in c && typeof c.text === 'string') return c.text;
+              return '';
+            })
+            .join('');
+
+    const replyMatch = rawContent.match(/<reply>([\s\S]*?)<\/reply>/);
+    const memoryMatch = rawContent.match(/<memory>([\s\S]*?)<\/memory>/);
+    const reactMatch = rawContent.match(/<react>([\s\S]*?)<\/react>/);
+
+    const finalReply = replyMatch ? replyMatch[1].trim() : rawContent;
+    const finalReact = reactMatch ? reactMatch[1].trim() : '';
+    const memoryContent = memoryMatch ? memoryMatch[1].trim() : 'IGNORE';
+
+    this.redisService
+      .addMessage(userId, 'user', userMessage)
+      .catch(console.error);
+    this.redisService
+      .addMessage(userId, 'model', finalReply)
+      .catch(console.error);
+
+    this.handleHistory(userId, userMessage, finalReply, memoryContent).catch(
+      console.error,
+    );
+
+    return {
+      content: finalReply,
+      react: finalReact,
+    };
+  }
+  private async handleHistory(
+    userId: string,
+    userQuery: string,
+    botReply: string,
+    memoryTag: string,
+  ) {
+    if (memoryTag.includes('IGNORE')) {
+      console.log(`🗑️ Ignored toxic/irrelevant memory for user ${userId}`);
+      return;
+    }
+
+    await this.historyStore.addDocuments([
+      new Document({
+        pageContent: memoryTag,
+        metadata: { userId: userId, createdAt: new Date().toISOString() },
+      }),
+    ]);
+
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    this.checkAndSummarizeHistory(userId);
+  }
+  private async checkAndSummarizeHistory(userId: string) {
+    try {
+      const docs = await this.historyStore.similaritySearch('history', 100, {
+        userId: userId,
+      });
+
+      if (docs.length >= 50) {
+        console.log(`🧹 History of ${userId} exceeds 50. Summarizing...`);
+
+        const fullHistory = docs.map((d) => d.pageContent).join('\n');
+
+        const prompt = AiPrompts.summarizeHistory(fullHistory);
+        const res = await this.model.invoke([new HumanMessage(prompt)]);
+        const content = res.content;
+
+        const summary =
+          typeof content === 'string'
+            ? content
+            : content
+                .map((c) => {
+                  if (typeof c === 'string') return c;
+                  if ('text' in c && typeof c.text === 'string') return c.text;
+                  return '';
+                })
+                .join('');
+
+        await this.historyStore.delete({ filter: { userId: userId } });
+
+        await this.historyStore.addDocuments([
+          new Document({
+            pageContent: `[SUMMARY OF PAST CONVERSATIONS]: ${summary}`,
+            metadata: {
+              userId: userId,
+              isSummary: true,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        ]);
+        console.log('✅ History summarized and reset.');
+      }
+    } catch (e) {
+      console.error('Error managing history:', e);
+    }
+  }
+  async getPersona(userId: string): Promise<string | null> {
+    const filter: Where = {
+      $and: [{ userId: userId }, { _type: 'user_persona' }],
+    };
+
+    const docs = await this.profileStore.similaritySearch(
+      'user-persona',
+      1,
+      filter,
+    );
+
+    if (docs.length > 0) {
+      return docs[0].pageContent;
+    }
+    return null;
+  }
+  async analyzeAndSetPersona(
+    targetUserId: string,
+    targetUserName: string,
+    rawInput: string,
+  ): Promise<string> {
+    const prompt = AiPrompts.analyzePersona(targetUserName, rawInput);
+
+    const res = await this.model.invoke([new HumanMessage(prompt)]);
+
+    const content = res.content;
+
+    let personaData = '';
+
+    if (typeof content === 'string') {
+      personaData = content;
+    } else {
+      personaData = content
+        .map((c) => {
+          if (typeof c === 'string') return c;
+          if ('text' in c && typeof c.text === 'string') return c.text;
+          return '';
+        })
+        .join('');
+    }
+
+    console.log(`🎭 Setting New Persona for ${targetUserName}:`, personaData);
+
+    try {
+      await this.profileStore.delete({
+        filter: {
+          $and: [{ userId: targetUserId }, { _type: 'user_persona' }],
+        },
+      });
+    } catch (e) {
+      console.log('error: ', e);
+    }
+
+    await this.profileStore.addDocuments([
+      new Document({
+        pageContent: personaData,
+        metadata: {
+          userId: targetUserId,
+          type: 'user_persona',
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    ]);
+
+    return personaData;
+  }
+}
