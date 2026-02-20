@@ -8,6 +8,7 @@ import { Document } from '@langchain/core/documents';
 import type { Where } from 'chromadb';
 import { AiPrompts } from './ai.prompts';
 import { RedisService } from './redis.service';
+import { ChromaClient } from 'chromadb';
 
 @Injectable()
 export class AiService {
@@ -24,6 +25,16 @@ export class AiService {
   ) {
     const apiKey = this.configService.get<string>('GOOGLE_API_KEY');
     const chromaUrl = this.configService.get<string>('CHROMA_URL') || '';
+    const chromaPassword =
+      this.configService.get<string>('CHROMA_PASSWORD') || '';
+    const clientWithAuth = new ChromaClient({
+      path: chromaUrl,
+      auth: {
+        provider: 'token',
+        credentials: chromaPassword,
+        tokenHeader: 'X-Chroma-Token',
+      },
+    });
 
     this.model = new ChatGoogle({
       apiKey: apiKey,
@@ -43,16 +54,16 @@ export class AiService {
 
     this.profileStore = new Chroma(this.embeddings, {
       collectionName: 'profile',
-      url: chromaUrl,
+      index: clientWithAuth,
     });
 
     this.serverInfoStore = new Chroma(this.embeddings, {
       collectionName: 'server-info',
-      url: chromaUrl,
+      index: clientWithAuth,
     });
     this.historyStore = new Chroma(this.embeddings, {
       collectionName: 'history',
-      url: chromaUrl,
+      index: clientWithAuth,
     });
   }
 
