@@ -102,23 +102,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             .setRequired(true),
         )
         .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
-      new SlashCommandBuilder()
-        .setName('commentuser')
-        .setDescription(
-          'Bot tự động bình luận vào bài viết trong Forum (Chỉ Admin)',
-        )
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-        .addStringOption((option) =>
-          option
-            .setName('tone')
-            .setDescription('Chọn thái độ/mức độ bình luận của bot')
-            .setRequired(true)
-            .addChoices(
-              { name: 'Khịa / Cợt nhã', value: 'roast' },
-              { name: 'Bình thường / Thân thiện', value: 'normal' },
-              { name: 'Deep talk / Tâm sự', value: 'deep' },
-            ),
-        ),
     ].map((command) => command.toJSON());
 
     try {
@@ -253,68 +236,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         );
 
         await interaction.editReply(`✅ **Đã cập nhật!**\n> ${result}`);
-      }
-      if (commandName === 'commentuser') {
-        if (!isAdmin()) return;
-        const selectedTone = interaction.options.getString('tone', true);
-
-        const channel = interaction.channel;
-
-        if (!channel || !channel.isThread()) {
-          await interaction.reply({
-            content:
-              '❌ Lệnh này chỉ xài được khi ông đang ở **BÊN TRONG** một bài viết của Forum thôi nha bro!',
-            ephemeral: true,
-          });
-          return;
-        }
-
-        const parentChannel = channel.parent;
-        if (!parentChannel || parentChannel.type !== ChannelType.GuildForum) {
-          await interaction.reply({
-            content:
-              '❌ Kênh này không phải là kênh Forum (như #💙-nơi-tâm-sự). Nghỉ chơi!',
-            ephemeral: true,
-          });
-          return;
-        }
-
-        await interaction.deferReply({ ephemeral: true });
-
-        try {
-          const threadTitle = channel.name;
-          const starterMessage = await channel.fetchStarterMessage();
-          const threadOwnerId = channel.ownerId;
-
-          if (!threadOwnerId) {
-            await interaction.editReply(
-              '❌ Không tìm thấy chủ nhân bài viết này. Lỗi tâm linh rồi!',
-            );
-            return;
-          }
-
-          const postContent = starterMessage
-            ? starterMessage.content
-            : '[Chỉ có ảnh/video, không có text]';
-
-          const targetPersona =
-            (await this.aiService.getPersona(threadOwnerId)) ||
-            'Mặc định (Bình thường, thân thiện)';
-
-          const botComment = await this.aiService.generateForumComment(
-            threadTitle,
-            postContent,
-            targetPersona,
-            selectedTone,
-          );
-
-          await channel.send(botComment);
-
-          await interaction.editReply('✅ Đã bình luận dạo thành công!');
-        } catch (error) {
-          console.error(error);
-          await interaction.editReply('❌ Lỗi: ' + (error as Error).message);
-        }
       }
     } catch (error) {
       console.error('Interaction Error:', error);
