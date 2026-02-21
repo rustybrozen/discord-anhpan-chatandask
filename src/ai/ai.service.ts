@@ -406,14 +406,15 @@ export class AiService {
     Nhiệm vụ: Viết MỘT BÌNH LUẬN (Comment) ngắn gọn để đáp lại bài viết này.
     
     🛑 NGÔN NGỮ BẮT BUỘC (CỰC KỲ QUAN TRỌNG):
-    Xác định ngôn ngữ của "Tiêu đề" và "Nội dung bài viết". BẠN BẮT BUỘC PHẢI BÌNH LUẬN BẰNG CHÍNH NGÔN NGỮ ĐÓ (Ví dụ: Bài tiếng Trung -> Phản hồi 100% bằng tiếng Trung. Bài tiếng Anh -> Phản hồi 100% bằng tiếng Anh).
+    Xác định ngôn ngữ của "Tiêu đề" và "Nội dung bài viết". BẠN BẮT BUỘC PHẢI BÌNH LUẬN BẰNG CHÍNH NGÔN NGỮ ĐÓ.
 
     🛑 THÁI ĐỘ BẮT BUỘC:
     ${toneInstruction}
     
-    Yêu cầu phụ:
-    - Xưng hô: NẾU là tiếng Việt, hãy xưng "Tui" và "Ông/Bro/Bà" (kiểu Gen Z). NẾU là ngôn ngữ khác, hãy sử dụng từ lóng mạng (internet slang) tự nhiên, trôi chảy của ngôn ngữ đó để tạo cảm giác gần gũi như bạn bè. Tuyệt đối không dịch máy móc.
-    - TUYỆT ĐỐI KHÔNG dùng ngoặc kép bọc câu trả lời, KHÔNG chào hỏi kiểu AI (chỉ nói thẳng nội dung).
+    🛑 LUẬT CẤM LẢM NHẢM (STRICT RULE):
+    BẠN PHẢI BẮT ĐẦU CÂU BÌNH LUẬN NGAY LẬP TỨC. 
+    TUYỆT ĐỐI KHÔNG sử dụng các câu mào đầu, không giải thích ngôn ngữ, không dùng các cụm từ như: "Since the post is in English...", "Dưới đây là...", "Here is my response:", v.v. CHỈ OUTPUT ĐÚNG NỘI DUNG BÌNH LUẬN CỦA BẠN.
+    - TUYỆT ĐỐI KHÔNG dùng ngoặc kép bọc câu trả lời.
     `;
 
     try {
@@ -421,7 +422,7 @@ export class AiService {
       return this.parseContent(res.content).trim();
     } catch (error) {
       console.error('Lỗi khi AI generate comment:', error);
-      return '...';
+      return 'Chủ đề này làm tui lú quá bro... 🤐';
     }
   }
   private parseContent(content: unknown): string {
