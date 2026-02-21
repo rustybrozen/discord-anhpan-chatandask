@@ -312,7 +312,7 @@ export class AiService {
   }
   async getPersona(userId: string): Promise<string | null> {
     const filter: Where = {
-      $and: [{ userId: userId }, { _type: 'user_persona' }],
+      $and: [{ userId: userId }, { type: 'user_persona' }],
     };
 
     const docs = await this.profileStore.similaritySearch(
@@ -356,7 +356,7 @@ export class AiService {
     try {
       await this.profileStore.delete({
         filter: {
-          $and: [{ userId: targetUserId }, { _type: 'user_persona' }],
+          $and: [{ userId: targetUserId }, { type: 'user_persona' }],
         },
       });
     } catch (e) {

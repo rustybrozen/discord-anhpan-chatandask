@@ -29,7 +29,9 @@ export const AiPrompts = {
     `Summarize user facts and core context from this history into one concise Vietnamese paragraph. Ignore small talk.\nHISTORY:\n${fullHistory}`,
 
   analyzePersona: (targetUserName: string, rawInput: string) =>
-    `Extract persona for "${targetUserName}" from: "${rawInput}". Output short Vietnamese summary (e.g., "Giới tính: Nam. Bot gọi User: Đại Ca. Tone: Cục súc.").`,
+    `Extract persona for "${targetUserName}" from: "${rawInput}". 
+Output ONLY the concise Vietnamese summary (e.g., "Giới tính: Nam. Bot gọi User: Đại Ca. Tone: Cục súc.").
+DO NOT add any conversational filler, greetings, or explanations like "Here is the summary".`,
 
   mainChat: (data: {
     userProfile: string;
