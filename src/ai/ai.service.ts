@@ -376,4 +376,64 @@ export class AiService {
 
     return personaData;
   }
+  async generateForumComment(
+    title: string,
+    content: string,
+    persona: string,
+    tone: string,
+  ): Promise<string> {
+    let toneInstruction = '';
+    if (tone === 'roast') {
+      toneInstruction =
+        'CỰC KỲ CỢT NHÃ, hài hước, khịa (roast) người viết bài một cách vui vẻ. Đừng nghiêm túc, hãy nhây và bựa.';
+    } else if (tone === 'deep') {
+      toneInstruction =
+        'ĐÚNG CHẤT TÂM SỰ (deep talk), vô cùng đồng cảm, an ủi nhẹ nhàng, sâu sắc, thấu hiểu cảm xúc của người viết. Giọng điệu ấm áp.';
+    } else {
+      toneInstruction =
+        'Bình thường, thân thiện, lịch sự, như một người bạn đang trò chuyện rôm rả.';
+    }
+
+    const prompt = `
+    Role: Bạn là AnhPan - Đồng Hành Server trên Discord.
+    
+    Tình huống: Một người dùng vừa đăng một bài tâm sự/chia sẻ vào kênh Forum.
+    Người này có tính cách/đặc điểm: ${persona}
+    
+    Tiêu đề bài viết: "${title}"
+    Nội dung bài viết: "${content}"
+    
+    Nhiệm vụ: Viết MỘT BÌNH LUẬN (Comment) ngắn gọn để đáp lại bài viết này.
+    
+    🛑 THÁI ĐỘ BẮT BUỘC CỦA BÌNH LUẬN NÀY:
+    ${toneInstruction}
+    
+    Yêu cầu phụ:
+    - Xưng hô: "Tui" và "Ông/Bro/Bà", ngôn ngữ Gen Z tự nhiên. Đọc Persona để xưng hô cho chuẩn nhất.
+    - TUYỆT ĐỐI KHÔNG dùng ngoặc kép bọc câu trả lời, KHÔNG chào hỏi kiểu AI (chỉ nói thẳng nội dung).
+    `;
+
+    try {
+      const res = await this.model.invoke([new HumanMessage(prompt)]);
+      return this.parseContent(res.content).trim();
+    } catch (error) {
+      console.error('Lỗi khi AI generate comment:', error);
+      return '...';
+    }
+  }
+  private parseContent(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((c: unknown) => {
+          if (typeof c === 'string') return c;
+          if (c !== null && typeof c === 'object' && 'text' in c) {
+            return (c as Record<string, unknown>).text as string;
+          }
+          return '';
+        })
+        .join('');
+    }
+    return '';
+  }
 }

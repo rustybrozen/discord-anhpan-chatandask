@@ -1,5 +1,5 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { ChatGoogle } from '@langchain/google';
 import { HumanMessage } from '@langchain/core/messages';
