@@ -405,11 +405,14 @@ export class AiService {
     
     Nhiệm vụ: Viết MỘT BÌNH LUẬN (Comment) ngắn gọn để đáp lại bài viết này.
     
-    🛑 THÁI ĐỘ BẮT BUỘC CỦA BÌNH LUẬN NÀY:
+    🛑 NGÔN NGỮ BẮT BUỘC (CỰC KỲ QUAN TRỌNG):
+    Xác định ngôn ngữ của "Tiêu đề" và "Nội dung bài viết". BẠN BẮT BUỘC PHẢI BÌNH LUẬN BẰNG CHÍNH NGÔN NGỮ ĐÓ (Ví dụ: Bài tiếng Trung -> Phản hồi 100% bằng tiếng Trung. Bài tiếng Anh -> Phản hồi 100% bằng tiếng Anh).
+
+    🛑 THÁI ĐỘ BẮT BUỘC:
     ${toneInstruction}
     
     Yêu cầu phụ:
-    - Xưng hô: "Tui" và "Ông/Bro/Bà", ngôn ngữ Gen Z tự nhiên. Đọc Persona để xưng hô cho chuẩn nhất.
+    - Xưng hô: NẾU là tiếng Việt, hãy xưng "Tui" và "Ông/Bro/Bà" (kiểu Gen Z). NẾU là ngôn ngữ khác, hãy sử dụng từ lóng mạng (internet slang) tự nhiên, trôi chảy của ngôn ngữ đó để tạo cảm giác gần gũi như bạn bè. Tuyệt đối không dịch máy móc.
     - TUYỆT ĐỐI KHÔNG dùng ngoặc kép bọc câu trả lời, KHÔNG chào hỏi kiểu AI (chỉ nói thẳng nội dung).
     `;
 
