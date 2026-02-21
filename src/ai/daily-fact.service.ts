@@ -80,7 +80,7 @@ export class DailyFactService {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron('0 8 * * *')
   async handleDailyFact() {
     if (this.targetChannels.length === 0) return;
 
